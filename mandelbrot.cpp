@@ -15,13 +15,11 @@ struct MyColor{
 
 
 void updateImage(double zoom, double offsetX, double offsetY) ;
-//sf::Color *imageColors = (sf::Color *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH , sizeof(sf::Color));
 static const int MAX = 127; // maximum number of iterations for mandelbrot()
-                         // don't increase MAX or the colouring will look strange
+                           // don't increase MAX or the colouring will look strange
+                           
 uint8_t *__restrict imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
 uint8_t *__restrict colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
-
-    //std::array<sf::Color, MAX+1>__restrict colors;
     
 int mandelbrot(double startReal, double startImag) ;
 MyColor getColor(int iterations) ;
@@ -37,14 +35,14 @@ void initColor() {
         colors[i*3 + 2] = color.blue;
         
     }
-#pragma acc enter data copyin(colors[:(MAX+1)*3])
-#pragma acc enter data copyin(imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
+//#pragma acc enter data copyin(colors[:(MAX+1)*3])
+//#pragma acc enter data copyin(imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
 }
 
 int mandelbrot(double startReal, double startImag) {
     double zReal = startReal;
     double zImag = startImag;
-
+    //#pragma acc loop seq
     for (int counter = 0; counter < MAX; ++counter) {
         double r2 = zReal * zReal;
         double i2 = zImag * zImag;
@@ -91,7 +89,8 @@ void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int
     double real = 0 * zoom - IMAGE_WIDTH / 2.0 * zoom + offsetX;
     double imagstart = minY * zoom - IMAGE_HEIGHT / 2.0 * zoom + offsetY;
 
-    #pragma acc parallel loop
+    #pragma acc parallel loop copy(colors[:(MAX+1)*3], imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
+    //#pragma acc kernels
     {
     for (int x = 0; x < IMAGE_WIDTH; x++, real += zoom) {
         double imag = imagstart;
@@ -99,8 +98,6 @@ void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int
         #pragma acc loop
         for (int y = minY; y < maxY; y++, imag += zoom) {
             int value = mandelbrot(real, imag);
-            //imageColors[y*IMAGE_WIDTH + x] = sf::Color(colors[value].r, colors[value].g, colors[value].b);
-            //image.setPixel(x, y, colors[value]);
             imageColors[(y*IMAGE_WIDTH + x)*4 + 0] = colors[value*3];
             imageColors[(y*IMAGE_WIDTH + x)*4 + 1] = colors[value*3 + 1];
             imageColors[(y*IMAGE_WIDTH + x)*4 + 2] = colors[value*3 + 2];
@@ -114,24 +111,24 @@ void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int
 
 void updateImage(double zoom, double offsetX, double offsetY)
 {
-    const int STEP = IMAGE_HEIGHT;
+    const int STEP = IMAGE_HEIGHT; //do whole image in one step for simplicity
     for (int i = 0; i < IMAGE_HEIGHT; i += STEP) {
         updateImageSlice(zoom, offsetX, offsetY, i, std::min(i+STEP, IMAGE_HEIGHT));
     }
 }
 
 int main() {
-    double offsetX = -0.7; // and move around
+    double offsetX = -0.7; // move around
     double offsetY = 0.0;
-    double zoom = 0.004; // allow the user to zoom in and out...
+    double zoom = 0.004; // allow the user to zoom in and out
     initColor();
     sf::Image pngImage;
     updateImage(zoom, offsetX, offsetY);
     pngImage.create(IMAGE_WIDTH, IMAGE_HEIGHT, imageColors);
     pngImage.saveToFile("test.png");
     
-    #pragma acc exit data delete(imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
-    #pragma acc exit data delete(colors[:(MAX+1)*3])
+    //#pragma acc exit data delete(imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
+    //#pragma acc exit data delete(colors[:(MAX+1)*3])
     
     free(imageColors);
     free(colors);

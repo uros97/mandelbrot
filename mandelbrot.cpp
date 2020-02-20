@@ -15,8 +15,8 @@ struct MyColor{
 
 
 void updateImage(double zoom, double offsetX, double offsetY) ;
-static const int MAX = 127; // maximum number of iterations for mandelbrot()
-                           // don't increase MAX or the colouring will look strange
+static const int MAX = 500; // maximum number of iterations for mandelbrot()
+                           
                            
 //uint8_t *__restrict imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
 //uint8_t *__restrict colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
@@ -25,12 +25,13 @@ uint8_t *__restrict colors;
 
 int mandelbrot(double startReal, double startImag) ;
 MyColor getColor(int iterations) ;
+MyColor getColor16(int iterations) ;
 void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int maxY) ;
 
 
 void initColor() {
     for (int i=0; i <= MAX; ++i) {
-        MyColor color = getColor(i);
+        MyColor color = getColor16(i); //replace this with getColor for simpler coloring
         
         colors[i*3] = color.red;
         colors[i*3 + 1] = color.green;
@@ -59,7 +60,7 @@ int mandelbrot(double startReal, double startImag) {
 
 MyColor getColor(int iterations){
     int r, g, b;
-
+    
     // colour gradient:      Red -> Blue -> Green -> Red -> Black
     // corresponding values:  0  ->  16  ->  32   -> 64  ->  127 (or -1)
     if (iterations < 16) {
@@ -84,6 +85,43 @@ MyColor getColor(int iterations){
     retVal.green = g;
     retVal.blue = b;
     return retVal;
+}
+
+MyColor getColor16(int iterations){
+    MyColor *myColors = (MyColor *) calloc(16, sizeof(MyColor));
+    MyColor retVal;
+    if(iterations < MAX && iterations > 0){
+        myColors[0].red = 66; myColors[0].green = 30; myColors[0].blue = 15;
+        myColors[1].red = 25; myColors[1].green = 7; myColors[1].blue = 26;
+        myColors[2].red = 9; myColors[2].green = 1; myColors[2].blue = 47;
+        myColors[3].red = 4; myColors[3].green = 4; myColors[3].blue = 73;
+        myColors[4].red = 0; myColors[4].green = 7; myColors[4].blue = 100;
+        myColors[5].red = 12; myColors[5].green = 44; myColors[5].blue = 138;
+        myColors[6].red = 24; myColors[6].green = 82; myColors[6].blue = 177;
+        myColors[7].red = 57; myColors[7].green = 125; myColors[7].blue = 209;
+        myColors[8].red = 134; myColors[8].green = 181; myColors[8].blue = 229;
+        myColors[9].red = 211; myColors[9].green = 236; myColors[9].blue = 248;
+        myColors[10].red = 241; myColors[10].green = 233; myColors[10].blue = 191;
+        myColors[11].red = 248; myColors[11].green = 201; myColors[11].blue = 95;
+        myColors[12].red = 255; myColors[12].green = 170; myColors[12].blue = 0;
+        myColors[13].red = 204; myColors[13].green = 128; myColors[13].blue = 0;
+        myColors[14].red = 153; myColors[14].green = 87; myColors[14].blue = 0;
+        myColors[15].red = 106; myColors[15].green = 52; myColors[15].blue = 3;
+    
+        int i = iterations % 16;
+    
+        retVal.red = myColors[i].red;
+        retVal.green = myColors[i].green;
+        retVal.blue = myColors[i].blue;
+    
+    }
+    else{
+        retVal.red = 0;
+        retVal.green = 0;
+        retVal.blue = 0;
+    }
+    return retVal;
+    
 }
 
 void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int maxY)
@@ -124,16 +162,74 @@ int main() {
     double offsetX = -0.7; // move around
     double offsetY = 0.0;
     double zoom = 0.004; // allow the user to zoom in and out
+    sf::RenderWindow window(sf::VideoMode(IMAGE_WIDTH, IMAGE_HEIGHT), "Mandelbrot");
+    window.setFramerateLimit(0);
+    
+    
     imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
     colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
     initColor();
     sf::Image pngImage;
     updateImage(zoom, offsetX, offsetY);
     pngImage.create(IMAGE_WIDTH, IMAGE_HEIGHT, imageColors);
-    pngImage.saveToFile("test.png");
-    
+    //pngImage.saveToFile("test.png");
+    sf::Texture texture;
+    sf::Sprite sprite;
     //#pragma acc exit data delete(imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
     //#pragma acc exit data delete(colors[:(MAX+1)*3])
+        
+    bool stateChanged = true; // track whether the image needs to be regenerated
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            switch (event.type) {
+                case sf::Event::Closed:
+                    window.close();
+                    break;
+                case sf::Event::KeyPressed:
+                    stateChanged = true; // image needs to be recreated when the user changes zoom or offset
+                    switch (event.key.code) {
+                        case sf::Keyboard::Escape:
+                            window.close();
+                            break;
+                        case sf::Keyboard::Equal:
+                            zoom *= 0.9;
+                            break;
+                        case sf::Keyboard::Dash:
+                            zoom /= 0.9;
+                            break;
+                        case sf::Keyboard::W:
+                            offsetY -= 40 * zoom;
+                            break;
+                        case sf::Keyboard::S:
+                            offsetY += 40 * zoom;
+                            break;
+                        case sf::Keyboard::A:
+                            offsetX -= 40 * zoom;
+                            break;
+                        case sf::Keyboard::D:
+                            offsetX += 40 * zoom;
+                            break;
+                        default: 
+                            stateChanged = false;
+                            break;
+                    }
+                default:
+                    break;
+            }
+        }
+
+        if (stateChanged) { 
+            updateImage(zoom, offsetX, offsetY);
+            pngImage.create(IMAGE_WIDTH, IMAGE_HEIGHT, imageColors);
+            texture.loadFromImage(pngImage);
+            sprite.setTexture(texture);
+            stateChanged = false;
+        }
+        window.draw(sprite);
+        window.display();
+    }
     
     free(imageColors);
     free(colors);

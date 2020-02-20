@@ -18,9 +18,11 @@ void updateImage(double zoom, double offsetX, double offsetY) ;
 static const int MAX = 127; // maximum number of iterations for mandelbrot()
                            // don't increase MAX or the colouring will look strange
                            
-uint8_t *__restrict imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
-uint8_t *__restrict colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
-    
+//uint8_t *__restrict imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
+//uint8_t *__restrict colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
+uint8_t *__restrict imageColors;
+uint8_t *__restrict colors;  
+
 int mandelbrot(double startReal, double startImag) ;
 MyColor getColor(int iterations) ;
 void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int maxY) ;
@@ -42,7 +44,7 @@ void initColor() {
 int mandelbrot(double startReal, double startImag) {
     double zReal = startReal;
     double zImag = startImag;
-    //#pragma acc loop seq
+    #pragma acc loop seq
     for (int counter = 0; counter < MAX; ++counter) {
         double r2 = zReal * zReal;
         double i2 = zImag * zImag;
@@ -86,17 +88,18 @@ MyColor getColor(int iterations){
 
 void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int maxY)
 {
-    double real = 0 * zoom - IMAGE_WIDTH / 2.0 * zoom + offsetX;
+    double realstart = 0 * zoom - IMAGE_WIDTH / 2.0 * zoom + offsetX;
     double imagstart = minY * zoom - IMAGE_HEIGHT / 2.0 * zoom + offsetY;
 
-    #pragma acc parallel loop copy(colors[:(MAX+1)*3], imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
+    
     //#pragma acc kernels
+    #pragma acc parallel loop copy(colors[:(MAX+1)*3], imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
     {
-    for (int x = 0; x < IMAGE_WIDTH; x++, real += zoom) {
-        double imag = imagstart;
-        
+    for (int x = 0; x < IMAGE_WIDTH; x++) {
+        double real = realstart + (x*zoom);
         #pragma acc loop
-        for (int y = minY; y < maxY; y++, imag += zoom) {
+        for (int y = minY; y < maxY; y++) {
+            double imag = imagstart + ((y-minY)*zoom);
             int value = mandelbrot(real, imag);
             imageColors[(y*IMAGE_WIDTH + x)*4 + 0] = colors[value*3];
             imageColors[(y*IMAGE_WIDTH + x)*4 + 1] = colors[value*3 + 1];
@@ -121,6 +124,8 @@ int main() {
     double offsetX = -0.7; // move around
     double offsetY = 0.0;
     double zoom = 0.004; // allow the user to zoom in and out
+    imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
+    colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
     initColor();
     sf::Image pngImage;
     updateImage(zoom, offsetX, offsetY);

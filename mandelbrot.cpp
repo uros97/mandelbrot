@@ -3,6 +3,8 @@
 #include <array>
 #include <vector>
 #include <stdint.h>
+#include <stdio.h>
+#include <omp.h>
 
 static constexpr int IMAGE_WIDTH = 1000;
 static constexpr int IMAGE_HEIGHT = 600;
@@ -15,11 +17,9 @@ struct MyColor{
 
 
 void updateImage(double zoom, double offsetX, double offsetY) ;
-static const int MAX = 500; // maximum number of iterations for mandelbrot()
+static const int MAX = 600; // maximum number of iterations for mandelbrot()
+MyColor *myColors;
                            
-                           
-//uint8_t *__restrict imageColors = (uint8_t *) calloc(IMAGE_HEIGHT * IMAGE_WIDTH *4 , sizeof(uint8_t));
-//uint8_t *__restrict colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
 uint8_t *__restrict imageColors;
 uint8_t *__restrict colors;  
 
@@ -30,6 +30,25 @@ void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int
 
 
 void initColor() {
+    
+    myColors = (MyColor *) calloc(16, sizeof(MyColor));
+    myColors[0].red = 66; myColors[0].green = 30; myColors[0].blue = 15;
+    myColors[1].red = 25; myColors[1].green = 7; myColors[1].blue = 26;
+    myColors[2].red = 9; myColors[2].green = 1; myColors[2].blue = 47;
+    myColors[3].red = 4; myColors[3].green = 4; myColors[3].blue = 73;
+    myColors[4].red = 0; myColors[4].green = 7; myColors[4].blue = 100;
+    myColors[5].red = 12; myColors[5].green = 44; myColors[5].blue = 138;
+    myColors[6].red = 24; myColors[6].green = 82; myColors[6].blue = 177;
+    myColors[7].red = 57; myColors[7].green = 125; myColors[7].blue = 209;
+    myColors[8].red = 134; myColors[8].green = 181; myColors[8].blue = 229;
+    myColors[9].red = 211; myColors[9].green = 236; myColors[9].blue = 248;
+    myColors[10].red = 241; myColors[10].green = 233; myColors[10].blue = 191;
+    myColors[11].red = 248; myColors[11].green = 201; myColors[11].blue = 95;
+    myColors[12].red = 255; myColors[12].green = 170; myColors[12].blue = 0;
+    myColors[13].red = 204; myColors[13].green = 128; myColors[13].blue = 0;
+    myColors[14].red = 153; myColors[14].green = 87; myColors[14].blue = 0;
+    myColors[15].red = 106; myColors[15].green = 52; myColors[15].blue = 3;
+    
     for (int i=0; i <= MAX; ++i) {
         MyColor color = getColor16(i); //replace this with getColor for simpler coloring
         
@@ -38,6 +57,8 @@ void initColor() {
         colors[i*3 + 2] = color.blue;
         
     }
+    
+    free(myColors);
 //#pragma acc enter data copyin(colors[:(MAX+1)*3])
 //#pragma acc enter data copyin(imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
 }
@@ -88,25 +109,9 @@ MyColor getColor(int iterations){
 }
 
 MyColor getColor16(int iterations){
-    MyColor *myColors = (MyColor *) calloc(16, sizeof(MyColor));
     MyColor retVal;
     if(iterations < MAX && iterations > 0){
-        myColors[0].red = 66; myColors[0].green = 30; myColors[0].blue = 15;
-        myColors[1].red = 25; myColors[1].green = 7; myColors[1].blue = 26;
-        myColors[2].red = 9; myColors[2].green = 1; myColors[2].blue = 47;
-        myColors[3].red = 4; myColors[3].green = 4; myColors[3].blue = 73;
-        myColors[4].red = 0; myColors[4].green = 7; myColors[4].blue = 100;
-        myColors[5].red = 12; myColors[5].green = 44; myColors[5].blue = 138;
-        myColors[6].red = 24; myColors[6].green = 82; myColors[6].blue = 177;
-        myColors[7].red = 57; myColors[7].green = 125; myColors[7].blue = 209;
-        myColors[8].red = 134; myColors[8].green = 181; myColors[8].blue = 229;
-        myColors[9].red = 211; myColors[9].green = 236; myColors[9].blue = 248;
-        myColors[10].red = 241; myColors[10].green = 233; myColors[10].blue = 191;
-        myColors[11].red = 248; myColors[11].green = 201; myColors[11].blue = 95;
-        myColors[12].red = 255; myColors[12].green = 170; myColors[12].blue = 0;
-        myColors[13].red = 204; myColors[13].green = 128; myColors[13].blue = 0;
-        myColors[14].red = 153; myColors[14].green = 87; myColors[14].blue = 0;
-        myColors[15].red = 106; myColors[15].green = 52; myColors[15].blue = 3;
+
     
         int i = iterations % 16;
     
@@ -129,8 +134,6 @@ void updateImageSlice(double zoom, double offsetX, double offsetY, int minY, int
     double realstart = 0 * zoom - IMAGE_WIDTH / 2.0 * zoom + offsetX;
     double imagstart = minY * zoom - IMAGE_HEIGHT / 2.0 * zoom + offsetY;
 
-    
-    //#pragma acc kernels
     #pragma acc parallel loop copy(colors[:(MAX+1)*3], imageColors[:IMAGE_HEIGHT * IMAGE_WIDTH *4])
     {
     for (int x = 0; x < IMAGE_WIDTH; x++) {
@@ -170,7 +173,15 @@ int main() {
     colors = (uint8_t *) calloc((MAX+1)*3 , sizeof(uint8_t));
     initColor();
     sf::Image pngImage;
+    
+    double start = omp_get_wtime();
     updateImage(zoom, offsetX, offsetY);
+    
+    double end = omp_get_wtime();
+
+
+    printf("Time elapsed: %lf\n", end - start);
+    
     pngImage.create(IMAGE_WIDTH, IMAGE_HEIGHT, imageColors);
     //pngImage.saveToFile("test.png");
     sf::Texture texture;
